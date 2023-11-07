@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Subtitle File Upload</title>
+    <link rel="stylesheet" href="//cdn.datatables.net/1.13.7/css/jquery.dataTables.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+
+        .container {
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 5px;
+        }
+
+        h1, h2 {
+            text-align: center;
+        }
+
+        #subtitleTable_wrapper {
+            margin-top: 20px;
+        }
+
+        .dataTables_length,
+        .dataTables_filter,
+        .dataTables_info,
+        .dataTables_paginate {
+            color: #333;
+        }
+        #subtitleTable {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid #333;
+    }
+
+    #subtitleTable th, #subtitleTable td {
+        border: 1px solid #333;
+        padding: 8px;
+        text-align: left;
+    }
+
+    #subtitleTable th {
+        background-color: #f2f2f2;
+    }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Subtitle File Upload</h1>
+
+        <form action="/upload" method="POST" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".srt" required>
+            <button type="submit">Upload</button>
+        </form>
+        <button id="translateButton">Translate</button>
+        <button id="downloadButton" style="display: none;">Download Translated SRT</button>
+
+        {% if subtitles %}
+        <h2>Subtitle Content</h2>
+        <div id="subtitleTable_wrapper" class="dataTables_wrapper">
+            <table id="subtitleTable" class="display">
+                <thead>
+                    <tr>
+                        <th>Index</th>
+                        <th>Start</th>
+                        <th>End</th>
+                        <th>Subtitle Text</th>
+                        <th>Translation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for subtitle in subtitles %}
+                    <tr>
+                        <td>{{ subtitle.index }}</td>
+                        <td>{{ subtitle.start }}</td>
+                        <td>{{ subtitle.end }}</td>
+                        <td>{{ subtitle.value }}</td>
+                        <td>{{ subtitle.translation }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <script src="//cdn.datatables.net/1.13.7/js/jquery.dataTables.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('#subtitleTable').DataTable({
+                "lengthMenu": [[-1], ["All"]], // Display all rows with no pagination
+                "columnDefs": [
+                {
+                    "targets": [3, 4], // Targets the 4th and 5th columns (Subtitle Text and Translation)
+                    "width": "35%" // Set a fixed width for the specified columns
+                }
+            ]
+            });
+    
+            $('#translateButton').click(function () {
+                // Get the list of subtitles
+                var subtitlesList = [];
+                $('#subtitleTable tbody tr').each(function () {
+                    var index = $(this).find('td:eq(0)').text();
+                    var start = $(this).find('td:eq(1)').text();
+                    var end = $(this).find('td:eq(2)').text();
+                    var value = $(this).find('td:eq(3)').text();
+                    var translation = $(this).find('td:eq(4)').text();
+                    subtitlesList.push({
+                        index: index,
+                        start: start,
+                        end: end,
+                        value: value,
+                        translation: translation
+                    });
+                });
+    
+                // Send the subtitles list to the translation endpoint
+                $.ajax({
+                    type: 'POST',
+                    url: 'http://localhost:5000/predict', // Update the endpoint URL
+                    data: JSON.stringify(subtitlesList),
+                    contentType: 'application/json',
+                    success: function (response) {
+                        // Update the translated subtitles in the table
+                        response.forEach(function (subtitle, index) {
+                            $('#subtitleTable tbody tr:eq(' + index + ') td:eq(4)').text(subtitle.translation);
+                        });
+                        $('#downloadButton').show();
+                    },
+                    error: function (error) {
+                        console.error('Translation error:', error);
+                    }
+                });
+            });
+        });
+
+    $('#downloadButton').click(function () {
+        // Create a Blob containing the translated subtitles as SRT format
+        var subtitlesContent = '';
+        $('#subtitleTable tbody tr').each(function () {
+            var index = $(this).find('td:eq(0)').text();
+            var start = $(this).find('td:eq(1)').text();
+            var end = $(this).find('td:eq(2)').text();
+            var value = $(this).find('td:eq(3)').text();
+            var translation = $(this).find('td:eq(4)').text();
+            subtitlesContent += index + '\n' + start + ' --> ' + end + '\n' + translation + '\n\n';
+        });
+
+        var blob = new Blob([subtitlesContent], { type: 'text/plain' });
+
+        // Create a temporary anchor element and trigger the download
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'translated_subtitles.srt';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    });
+    </script>
+</body>
+
+</html>
